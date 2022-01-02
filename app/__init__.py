@@ -1,7 +1,6 @@
 from flask import Flask
 import logging
 from config import Config
-from sqlalchemy.pool import QueuePool
 
 # from flask_debugtoolbar import DebugToolbarExtension
 

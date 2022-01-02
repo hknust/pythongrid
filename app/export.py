@@ -29,7 +29,7 @@ class PythonGridDbExport():
             sys.exit('Cannot export the grid. Please use enable_export() method to enable this feature.')
 
         engine = sqlalchemy.create_engine(app.config['DB_URL'],
-            poolclass = QueuePool, 
+            poolclass = sqlalchemy.pool.QueuePool,
             encoding=app.config['PYTHONGRID_DB_CHARSET']).connect()
 
         md = sqlalchemy.MetaData()
@@ -38,8 +38,6 @@ class PythonGridDbExport():
         columns = table.c
 
         #TODO if it is a masterdetail/subgrid, obtain the value of the foreign key to used later for filtering
-
-
 
         sord = request.args['sord'] if 'sord' in request.args.keys() else 'asc'
         sidx = request.args['sidx'] if 'sidx' in request.args.keys() else 1
@@ -50,7 +48,7 @@ class PythonGridDbExport():
         SQL = 'SELECT * FROM '+ self.__gridName + ' LIMIT 1 OFFSET 1'
 
         with engine.connect() as conn:
-            self.__rs = conn.execute(sqlalchemy.text(SQL)).fetchall() 
+            self.__rs = conn.execute(sqlalchemy.text(SQL)).fetchall()
 
         for column in columns:
             self.__field_names.append(column.name)
@@ -85,7 +83,7 @@ class PythonGridDbExport():
                     else:
                         sqlWhere += " AND " + sqlalchemy_utils.functions.quote(engine, key) + " LIKE '" + value + "%'"
 
-            # integrated toolbar and advanced search    
+            # integrated toolbar and advanced search
             if 'filters' in request.args.keys() and request.args['filters'] != '' :
                 operation = {
                     "eq": " ='%s' ","ne": " !='%s' ","lt": " < %s ",
@@ -96,7 +94,7 @@ class PythonGridDbExport():
                     "cn":  " like '%%%s%%' ","nc":  " not like '%%%s%%' "
                 }
 
-                filters = json.loads(request.args['filters'])                        
+                filters = json.loads(request.args['filters'])
                 groupOp = filters['groupOp']    # AND/OR
                 rules = filters['rules']
 
@@ -140,7 +138,7 @@ class PythonGridDbExport():
         app.logger.info(sqlWhere)
 
 
-        # (MySql only) escape column name contains '-' for sorting 
+        # (MySql only) escape column name contains '-' for sorting
         # if str(sidx).find('-') :
         #    sidx = '`' + str(sidx).upper() + '`'
 
@@ -158,7 +156,7 @@ class PythonGridDbExport():
 
 
         # ****************** prepare the final query ***********************
-        # Store GROUP BY Position 
+        # Store GROUP BY Position
         groupBy_Position = sql.upper().find("GROUP BY")
 
         if self.__sql_filter != '' and searchOn :
