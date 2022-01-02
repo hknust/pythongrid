@@ -8,7 +8,7 @@ import logging
 from collections import OrderedDict
 
 class PythonGridDbExport():
-    
+
     def __init__(self, sql):
 
         self.__gridName     = request.args['gn'] if 'gn' in request.args.keys() else sys.exit('PYTHONGRID_ERROR: ULR parameter "gn" is not defined.')
@@ -28,9 +28,12 @@ class PythonGridDbExport():
         if self.__export_type is None:
             sys.exit('Cannot export the grid. Please use enable_export() method to enable this feature.')
 
-        engine = sqlalchemy.create_engine(app.config['PYTHONGRID_DB_TYPE']+'://'+app.config['PYTHONGRID_DB_USERNAME']+':'+app.config['PYTHONGRID_DB_PASSWORD']+'@'+app.config['PYTHONGRID_DB_HOSTNAME']+'/'+app.config['PYTHONGRID_DB_NAME']+'?unix_socket='+app.config['PYTHONGRID_DB_SOCKET']).connect()
+        engine = sqlalchemy.create_engine(app.config['DB_URL'],
+            poolclass = QueuePool, 
+            encoding=app.config['PYTHONGRID_DB_CHARSET']).connect()
+
         md = sqlalchemy.MetaData()
-        
+
         table = sqlalchemy.Table(self.__gridName, md, autoload=True, autoload_with=engine)
         columns = table.c
 
@@ -70,7 +73,7 @@ class PythonGridDbExport():
             # check if the key is an actual database field. If so, add it to SQL Where (sqlWhere) statement
             for key, value in enumerate(request.args):
                 if key in col_dbnames:
-                
+
                     field_index = self.__field_names.index(key)
                     fm_type = self.__field_types[field_index]
 
@@ -103,10 +106,10 @@ class PythonGridDbExport():
                     # surround date fields with quotes for SQL date comparison
                     field_index = self.__field_names.index(rules[i]['field'])
                     fm_type = self.__field_types[field_index]
-                    
+
                     if type(fm_type) == sqlalchemy.sql.sqltypes.DATE or type(fm_type) == sqlalchemy.sql.sqltypes.TIMESTAMP \
                         or type(fm_type) == sqlalchemy.sql.sqltypes.DATETIME or type(fm_type) == sqlalchemy.sql.sqltypes.TIME:
-                        
+
                         dateOps = ['eq', 'ne', 'lt', 'le', 'gt', 'ge']
 
                         op = rules[i]['op']
@@ -124,7 +127,6 @@ class PythonGridDbExport():
                         sqlWhere += groupOp + " CAST(" + sqlalchemy_utils.functions.quote(engine, rules[i]['field']) + " AS " + sqlStrType + ")" + \
                                 (filter % rules[i]['data'])
                     else:
-                        
                         sqlWhere += groupOp + " " + sqlalchemy_utils.functions.quote(engine, rules[i]['field']) + \
                                 (filter % rules[i]['data'])
 
@@ -141,7 +143,7 @@ class PythonGridDbExport():
         # (MySql only) escape column name contains '-' for sorting 
         # if str(sidx).find('-') :
         #    sidx = '`' + str(sidx).upper() + '`'
-        
+
         # set ORDER BY. Don't use if user hasn't select a sort
         sqlOrderBy = ''
         if not sidx:

@@ -1,8 +1,8 @@
 from sqlalchemy import create_engine
+from sqlalchemy.pool import QueuePool
 import json, string, re
 from app import app
 from collections import OrderedDict
-
 
 class PythonGrid():
 
@@ -12,10 +12,8 @@ class PythonGrid():
     has_fileupload = False
     load_ajaxComplete = False
     has_rating = False
-    
+
     def __init__(self, sql, sql_key='', sql_table='', db_connection=[]):
-
-
         self.__jq_gridName = 'list1' if sql_table == '' else sql_table.replace('.', '_')
         self.__sql = sql
         self.__sql_key = sql_key
@@ -28,9 +26,11 @@ class PythonGrid():
 
         self.pdf_logo = ''            # PDF logo property (PDF export and file must be jpg only)
         self.debug = False            # TODO - will be deprecated next version
-        
-        self.db = create_engine(app.config['PYTHONGRID_DB_TYPE']+'://'+app.config['PYTHONGRID_DB_USERNAME']+':'+app.config['PYTHONGRID_DB_PASSWORD']+'@'+app.config['PYTHONGRID_DB_HOSTNAME']+'/'+app.config['PYTHONGRID_DB_NAME']+'?unix_socket='+app.config['PYTHONGRID_DB_SOCKET'], encoding=app.config['PYTHONGRID_DB_CHARSET'])
-        
+
+        self.db = create_engine(app.config['DB_URL'],
+            poolclass = QueuePool,
+            encoding = app.config['PYTHONGRID_DB_CHARSET'])
+
         self.db_connection = []
         self.obj_subgrid = []        # subjgrid object
         self.obj_md = []             # master detail object
@@ -93,7 +93,7 @@ class PythonGrid():
         self.__jq_multiselectPosition = 'right'    # leflt or right
         self.__jq_autowidth = False      # when true the width is set to 100%
         self.__jq_width = 'auto'
-        self.__jq_height = 'auto'         
+        self.__jq_height = 'auto'
 
         # START all the variables for the group
         self.__jq_grouping = False
@@ -105,7 +105,7 @@ class PythonGrid():
         self.__jq_showSummaryOnHide = False
         self.__jq_is_group_summary = False
         self.__jq_autoresizeOnLoad = True
-        
+
         # END all the variables for the group
 
         # self.__jq_caption = ''
@@ -121,10 +121,10 @@ class PythonGrid():
         self.__jq_hiddengrid = False     # hide grid initially
         self.__jq_gridview = True           # load all the data at once result in faster rendering. However, if set to true No Subgrid, treeGrid, afterInsertRow
         self.__jq_autoresizeOnLoad = True # Auto resize on load (requires autoresize flag set to true in colum property)
-    
+
         # jquery ui
         self.__jqu_resize = {'is_resizable' : False, 'min_width' : 300, 'min_height' : 100}         # resize grid
-        
+
         # others
         self.__num_rows = 0
         self.__num_fields = 0
@@ -179,10 +179,12 @@ class PythonGrid():
 
 
     def __del__(self):
-        if self.db.open:
-            self.db.close()
+        try:
+            if self.db.open:
+                self.db.close()
+        finally:
+            pass
 
-    
     def display_script_includeonce(self):
         return """<link rel="stylesheet" id="theme-custom-style" type="text/css" media="screen" href="/static/css/bootstrap/jquery-ui.css" />
             <link rel="stylesheet" href="/static/js/multiselect/ui.multiselect.min.css">
@@ -206,7 +208,7 @@ class PythonGrid():
             <script type="text/javascript">
                 if (typeof $().modal != "function"){document.write("<link rel='stylesheet' href='/static/css/font-awesome.min.css'>") }
             </script>"""
-    
+
 
     def display_properties_main(self):
         props = ''
@@ -249,9 +251,9 @@ class PythonGrid():
         props += 'widthOrg:"' + str(self.__jq_width) + '"' + ",\n"
         if not self.__jq_autoresizeOnLoad:
             props += 'width:"' + str(self.__jq_width) + '"' + ",\n"
-        
+
         props += 'sortable:' + str(len(self.__col_frozen)==0).lower() + ",\n"
-        props += 'loadError:' + """ 
+        props += 'loadError:' + """
                     function(xhr,status, err) {
                         try{
                             jQuery.jgrid.info_dialog(
@@ -350,7 +352,7 @@ class PythonGrid():
                         },""" + "\n"
                 props += 'errorfunc:function(){}' + "\n" # errorfunc - only called when status code is not 200.
                 props += '});' + "\n" # grid.jqGrid("editRow"...
-                
+
                 # do not focus selected cell when keybaord nav is enabled 
                 if not self.__kb_nav:
                     props += 'if(e){ setTimeout(function(){$("input, select, textarea",e.target).focus();}, 0) }' + "\n"
@@ -362,38 +364,39 @@ class PythonGrid():
         elif self.__edit_mode == 'FORM':
             props += ''
 
-        
         props += self.cust_prop_jsonstr + "\n"
 
         if not self.__cust_grid_properties:
             props += '' # substr(substr(json.dumps(self.__cust_grid_properties),1),0,-1) + ",\n"
 
-        # conditional formatting 
+        # conditional formatting
         # ...
 
         return props
-
 
     def prepare_grid(self):
 
         connection = self.db.raw_connection()
 
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(self.__sql)
-                result = cursor.fetchall()
+            # In order to accomodate Sqlite which does not
+            # provide a complete context manager.
+            # See https://stackoverflow.com/a/41739624/1175491
+            # for details
+            cursor = connection.cursor()
+            cursor.execute(self.__sql)
+            result = cursor.fetchall()
 
-                field_names = [i[0] for i in cursor.description]
+            field_names = [i[0] for i in cursor.description]
 
-                self.__num_fields = len(cursor.description)    
-                self.__num_rows = 0
+            self.__num_fields = len(cursor.description)
+            self.__num_rows = 0
 
 
-                self.set_colNames(result, field_names)            
-                self.set_colModels(result, cursor.description)            
-                
+            self.set_colNames(result, field_names)
+            self.set_colModels(result, cursor.description)
         finally:
-            pass #connection.close()
+            connection.close()
 
         return
 
@@ -414,7 +417,6 @@ class PythonGrid():
         return col_names
 
 
-
     def set_colModels(self, result, meta_data):
 
         self.jq_colModel = [] # must reset each time, Flask keeps the list in memory somehow
@@ -425,10 +427,10 @@ class PythonGrid():
         field_types = [i[1] for i in meta_data]
 
 
-        """ 
+        """
         meta atrributes (https://www.python.org/dev/peps/pep-0249/#cursor-attributes)
         mysql field type constants (http://mysql-python.sourceforge.net/MySQLdb-1.2.2/public/MySQLdb.constants.FIELD_TYPE-module.html)
-        
+
         name
         type_code
         display_size
@@ -446,8 +448,6 @@ class PythonGrid():
 
 
         i = 0
-        
-        
 
         while i < self.__num_fields:
             cols = OrderedDict()
@@ -529,7 +529,7 @@ class PythonGrid():
 
     def display_script_begin(self):
         script_begin = ''
-        
+
         script_begin += '<script type="text/javascript">' + "\n";
         script_begin += '//<![CDATA[' + "\n"
         script_begin += 'var lastSel;' + "\n"       
@@ -567,7 +567,7 @@ class PythonGrid():
                         sopt: ["eq"]
                     }
                 });
-            };\n """ 
+            };\n """
 
         return script_begin
 
@@ -576,11 +576,11 @@ class PythonGrid():
         style = '<style type="text/css">' + "\n"
 
         if self.__alt_colors is not None:
-            
+
             if self.__alt_colors['altrow'] is not None:
                 style += '#' + self.__jq_gridName + ' .ui-priority-secondary{background-image: none;background:' + self.__alt_colors['altrow'] + ';}' + "\n"
             style += '#' + self.__jq_gridName + ' .ui-state-hover{background-image: none;background:' + self.__alt_colors['hover'] + ';color:black}' + "\n"
-            
+
             if self.__alt_colors['highlight'] is not None:
                 style += '#' + self.__jq_gridName + ' .ui-state-highlight{background-image: none;background:' + self.__alt_colors['highlight'] + ';}' + "\n"
             style += 'table#' + self.__jq_gridName + ' tr{ opacity: 1}' + "\n"
@@ -655,7 +655,7 @@ class PythonGrid():
                                 window.location= "' + self.export_url + '&export_type=' + self.export_type + '"; \n  \
                         } \
                     });' + "\n"
-        
+
         return toolbar
 
 
@@ -730,16 +730,16 @@ class PythonGrid():
 
 
     def display(self):
-        
+
         self.prepare_grid()
-        
+
         disp = ''
         disp += self.display_script_includeonce()
         disp += self.display_style()
         disp += self.display_script_begin()
         disp += self.display_properties_begin()
         disp += self.display_properties_main()
-        
+
         #disp += display_subgrid($subgrid_count);
         #disp += display_masterdetail();
         disp += self.display_properties_end()
@@ -751,7 +751,7 @@ class PythonGrid():
         disp += self.__display_container();
 
         disp += self.display_events()
-        
+
         return disp
 
 
@@ -831,7 +831,7 @@ class PythonGrid():
         '''
 
         return self
-    
+
     # Desc: formatter: integer, number, currency, date, link, showlink, email, select (special case)
     def set_col_format(self, col_name, format, formatoptions=[]):
         self.__col_formats[col_name][format] = formatoptions
@@ -862,7 +862,7 @@ class PythonGrid():
     * Enable integrated toolbar search
     * @param  boolean $can_search      Enable integrated toolbar search
     * @param  Array $auto_filter     Excel-like auto filter
-    * @return grid object              
+    * @return grid object
     '''
     def enable_search(self, can_search, auto_filters = []):
         self.__has_tbarsearch   = can_search
